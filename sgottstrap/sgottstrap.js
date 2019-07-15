@@ -7,20 +7,18 @@ const jsonToSgo = require('../json-sgo')
 const config = require('./config')
 const weaponTable = require('./weapontable')
 const weaponText = require('./weapontext')
-const gameText = require('./texttable-steam-en')
 const generateWeaponText = require('../helpers/weapon-text')
 
 const modDir = './SgottMods'
 const templateDir = './SgottTemplates'
-const saveDir = '\\My Games\\EDF4.1_MODSAVES\\'
+const saveDir = '\\My Games\\EDF5_MODSAVES\\'
 const weaponModDir = `${modDir}/weapon`
 const configPath = `${modDir}/CONFIG.SGO`
 const mainscriptPath = `${modDir}/Mainscript.as`
 const weaponTablePath = `${modDir}/_WEAPONTABLE.SGO`
-const weaponTextPath = `${modDir}/_WEAPONTEXT.SGO`
+const weaponTextPath = `${modDir}/_WEAPONTEXT.EN.SGO`
 const coreTemplateDir = `${templateDir}/core`
 const weaponTemplateDir = `${templateDir}/weapon`
-const gameTextPath = `${modDir}/TXT_STEAM_EN.TXT_SGO`
 
 const filePath = Symbol('path')
 const exists = Symbol('exists')
@@ -39,16 +37,15 @@ function populate(key, path, fallback) {
 }
 
 populate('CONFIG.SGO', configPath, config)
-populate('TEXTTABLE_STEAM_EN.TXT_SGO', gameTextPath, gameText)
 populate('_WEAPONTABLE.SGO', weaponTablePath, weaponTable)
-populate('_WEAPONTEXT.SGO', weaponTextPath, weaponText)
+populate('_WEAPONTEXT.EN.SGO', weaponTextPath, weaponText)
 
 console.log('Patching executable...')
 ;(function(){
-  const exePath = './EDF41.exe'
+  const exePath = './EDF5.exe'
   const buffer = fs.readFileSync(exePath)
 
-  const path = './EDF41-sgott-backup.exe'
+  const path = './EDF5-sgott-backup.exe'
   if(fs.existsSync(path)) {
     console.error('Backup already exists. Skipping backup...')
   } else {
@@ -65,12 +62,11 @@ console.log('Patching executable...')
 
   replace('app:/DefaultPackage/config.sgo', configPath)
   //Todo: Actualy cound how many references and do this in a cleaner, more rational way
-  replace('\\My Games\\EDF4.1\\SAVE_DATA\\', saveDir)
-  replace('\\My Games\\EDF4.1\\SAVE_DATA\\', saveDir)
-  replace('\\My Games\\EDF4.1\\SAVE_DATA\\', saveDir)
-  replace('\\My Games\\EDF4.1\\SAVE_DATA\\', saveDir)
-  replace('\\My Games\\EDF4.1\\SAVE_DATA\\', saveDir)
-  replace('app:/etc/TextTable_steam_en.txt_sgo', gameTextPath)
+  replace('\\My Games\\EDF5\\SAVE_DATA\\', saveDir)
+  replace('\\My Games\\EDF5\\SAVE_DATA\\', saveDir)
+  replace('\\My Games\\EDF5\\SAVE_DATA\\', saveDir)
+  replace('\\My Games\\EDF5\\SAVE_DATA\\', saveDir)
+  replace('\\My Games\\EDF5\\SAVE_DATA\\', saveDir)
   //Todo: Actualy cound how many references and do this in a cleaner, more rational way
   replace('app:/MainScript/MainScript.as', mainscriptPath)
   replace('app:/MainScript/MainScript.as', mainscriptPath)
@@ -185,7 +181,7 @@ const weaponMods = fs
 console.log(`Weapon Mods found: ${weaponMods.length}`)
 
 const tableValues = files['_WEAPONTABLE.SGO'].variables[0].value
-const textValues = files['_WEAPONTEXT.SGO'].variables[0].value
+const textValues = files['_WEAPONTEXT.EN.SGO'].variables[0].value
 
 function findTableNode(id) {
   return tableValues.find(t => t.value[0].value === id)
@@ -193,7 +189,7 @@ function findTableNode(id) {
 
 function insertTableNode(index, tableNode, textNode) {
   files['_WEAPONTABLE.SGO'][touched] = true
-  files['_WEAPONTEXT.SGO'][touched] = true
+  files['_WEAPONTEXT.EN.SGO'][touched] = true
   tableValues.splice(index, 0, tableNode)
   textValues.splice(index, 0, textNode)
 }
@@ -320,7 +316,7 @@ succeeded = Object.keys(ids).length
 
 if(succeeded) {
   files['_WEAPONTABLE.SGO'][touched] = true
-  files['_WEAPONTEXT.SGO'][touched] = true
+  files['_WEAPONTEXT.EN.SGO'][touched] = true
 }
 
 for(const [path, template] of Object.entries(raw)) {

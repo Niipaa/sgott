@@ -1,8 +1,8 @@
 ﻿///
 /// MainScript共通ヘッダ
 ///
-/// $HeadURL: https://svnrepos.sandlot.jp/svn/repos/kiyosu/branches/ps4_us/Data/MainScript/CommonTypes.h $
-/// $Id: CommonTypes.h 19777 2015-09-15 07:29:35Z prg_m_shimazaki $
+/// $HeadURL: https://svnrepos.sandlot.jp/svn/repos/AZUCHI/branches/international/Data/MainScript/CommonTypes.h $
+/// $Id: CommonTypes.h 10466 2017-12-05 10:07:29Z prg_y_horiuchi $
 ///
 
 enum ResetFlags{
@@ -30,8 +30,6 @@ enum FadeControl{
 
 enum ResourceGroup{
 	RESOURCE_GROUP_TITLE,
-	RESOURCE_GROUP_TEXT1,
-	RESOURCE_GROUP_TEXT2,
 	RESOURCE_GROUP_MODE,
 	RESOURCE_GROUP_SCENE,
 };
@@ -62,6 +60,7 @@ enum GameModeID{
 	GAME_ONLINE_SCENARIO,
 	GAME_VERSUS,
 	
+	UIMODEINDEX_ERROR = 0xf,
 	UIMODESELECT_RESULT_CANCEL = -1,
 };
 
@@ -78,6 +77,13 @@ enum UiVersusMenuSelectResult{
 enum UiOnlineRoomResult {
 	UIONLINE_GOTO_MISSION,
 	UIONLINE_GOTO_LOBBY,
+	UIONLINE_GOTO_RETURNTITLE,
+};
+
+enum InvitationType {
+	INVITATION_TYPE_NONE,				// 何もない
+	INVITATION_TYPE_INVITE,				// 招待状(参加)経由
+	INVITATION_TYPE_PLAYTOGETHER_HOST,	// PlayTogetherホスト
 };
 
 enum NetworkBeginResult {
@@ -99,14 +105,9 @@ enum NetworkJoinResult {
 	NETWORKJOINRESULT_SUCCESS,			/// 成功
 	NETWORKJOINRESULT_FAILED,			/// 接続失敗
 	NETWORKJOINRESULT_FILLED,			/// いっぱいだった。
+	NETWORKJOINRESULT_PASSCODE,			/// パスワードが違う
 	NETWORKJOINRESULT_CHAT_RESTRICTION,	/// チャット制限にひっかかった
 	NETWORKJOINRESULT_UGC_RESTRICTION,	/// UGC制限にひっかかった
-};
-
-enum NetworkCreateRoomResult{
-	NETWORKCREATEROOM_SUCCESS,
-	NETWORKCREATEROOM_CANCEL,
-	NETWORKCREATEROOM_RETURN_TITLE,
 };
 
 enum NetworkLobbyMenuResult{
@@ -118,6 +119,8 @@ enum NetworkLobbyMenuResult{
 
 // 現在プレイヤーの操作状態
 enum NetworkLocation {
+	BOOTING = 0,		/// 起動中
+	BOOT_COMPLETE,		/// 起動完了
 	MENU_LOBBY,			/// メニュー：ロビー
 	MENU_ROOM,			/// メニュー：ルーム画面
 	GAME_PLAYING,		/// ゲーム：ゲーム中
@@ -147,10 +150,19 @@ enum UIMessage {
 	LOBBY_LOADMODEDATA_DONE,
 };
 
-enum RegionID {
-	_Region_JP,
-	_Region_US,
-	_Region_EU,
-	_Region_CN,
+enum UITransitionDirection {
+	TransitionUndefined=-1,
+	TransitionForword=0,
+	TransitionBackword
 };
 
+enum DialogYesNo {
+	DIALOG_YES,
+	DIALOG_NO,
+};
+
+
+enum MissionSync_Result {
+	MISSIONSYNC_COMPLETED,			// ミッション情報同期完了
+	MISSIONSYNC_ERROR,				// ミッション情報同期失敗
+};

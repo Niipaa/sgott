@@ -1,35 +1,61 @@
-﻿///
-/// メインスクリプト（各種モードへ分岐するまでを担当）
 ///
-/// $HeadURL$
-/// $Id$
+/// メインスクリプト2（各種モードへ分岐するまでを担当）
 ///
+/// $HeadURL: https://svnrepos.sandlot.jp/svn/repos/AZUCHI/branches/international/Data/MainScript/MAINSCRIPT.AS $
+/// $Id: MAINSCRIPT.AS 11132 2018-06-18 10:11:10Z prg_m_shimazaki $
+///
+
+/// @attension ゲームショウ用の処理は IsTGSMode でのみ分岐しています
 
 #include "CommonTypes.h"
+#include "CommonTypes.inner.h"
+#include "ui_common_const.h"
+#include "utility.h"
+#include "locale.h"
 
-// int __game_show_mode;
-//int slot_mode_select_fade_handle = -1;	//
-//int g_bg_handle = -1;
+BG					g_bg = BG();
+BG					g_main_frame = BG();
+Fade				g_fade = Fade();
+Resource			g_resource = Resource();
+Chat				g_chat = Chat();
+UiObject			@g_prev_object = UiObject();
+bool g_is_mission_clear = false; // 直前のミッションをクリアしたか？
+SaveDataObject		@g_sys_cfg_object = SaveDataObject();	//システムコンフィグのセーブデータ用オブジェクト
 
-enum MissionResult{
-	MISSION_RESULT_UNKNOWN,
-	MISSION_RESULT_CLEAR,
-	MISSION_RESULT_ABORT,
-	MISSION_RESULT_RETRY,
-	MISSION_RESULT_LOBBY,
-	MISSION_RESULT_MAX,
-};
+// モードセレクト後のデータロード処理
+bool	LoadSaveData_ModeSelect()
+{
+	WaitSaveLoad();
+	ModeSelectLoadSaveData();
+	WaitSaveLoad();
+	return IsCompleteSaveLoad();
+}
 
-enum ResouceSystemGroup{
-	SYSTEM_GROUP_TITLE,		// タイトル起動から終了まで常駐し続けるリソース用
-	SYSTEM_GROUP_MODE,		// ゲームモード単位で常駐するリソース用
-	SYSTEM_GROUP_SCENE,		// シーン単位のリソース（進行画面毎やミッション毎等）
-};
+// タイトルに戻る際のセーブ
+void	SaveAllData_ReturnTitle(bool is_focus)
+{
+	WaitSaveLoad();
+	Save(is_focus, "Contents_AutoSaveRetry_ReturnTitle",true);
+}
 
+void CheckUnlockArmorWeaponLimit()
+{
+	int clear_ratio = GetAchivementValue_Int("AllClearRatio");
+	if( clear_ratio >= 7000 ) {
+		if( UnlockArmorWeaponLimit() ) {
+			Dialog_Message( "Sys_UnlockArmorWeaponLimit" );
+		}
+	}
+}
 
+//-- ----------------------------------------------------------------------------------------------
 int main()
 {
+	SetMemoryType(1);
+
 	string current_routine = "Boot"; // 最初にコルーチン呼び出しを行う関数を登録しておく
+
+	DeleteAllMenuUi();
 
 	if( GetStartupRoutine().length() > 0 ) {
 		print( "[" + GetStartupRoutine() + "] changed" );
@@ -39,7 +65,7 @@ int main()
 	while( true ) {
 		// 正式な呼び出し型情報を作成する
 		string exec = "string " + current_routine + "()";
-		//print(exec);
+		print(exec);
 		// コルーチン呼び出し
 		coRoutine routine = createCoRoutine(exec);
 		// コルーチンが完了するまで待つ
@@ -53,511 +79,417 @@ int main()
 		}
 	}
 
+	InitializeAll();
+
+	print("MainScript2 end");
 	return 0;
 }
-
-
-/**
- * BGM管理
- */
-class Music {
-	string m_current_bgm;
-
-	// BGM再生リクエスト、再生中と同じBGMの場合は何もしない
-	void Play(string name) {
-		if( m_current_bgm != name ) {
-			PlayBgm( name );			// BGM:タイトル画面
-			m_current_bgm = name;
-		}
-	}
-	// BGMをフェード後停止
-	void Stop(int tm) {
-		StopBgmFadeout( tm );
-		m_current_bgm = "";
-	}
-};
-/**
- * BG表示管理
- */
-class BG {
-	string m_current_bg;
-
-	// BG再生リクエスト、再生中と同じBGMの場合は何もしない
-	void Play(string name) {
-		if( m_current_bg != name ) {
-			DeleteBg();
-			CreateBg(name);
-			m_current_bg = name;
-		}
-	}
-	// BGをフェード後停止
-	void Stop() {
-		DeleteBg();
-		m_current_bg = "";
-	}
-
-	// 単純に状態をクリアする
-	void Clear() {
-		m_current_bg = "";
-	}
-};
-
-int		g_music_fadetime = 60;
-Music	g_music = Music();
-
-BG 		g_bg = BG();
-
-// void MessageDialog_Sample()
-// {
-// 	// 文字列部分は ResourceManager::GetText のキーとして使用されるので、
-// 	// このサンプルコードだけでは下記コードの文字は表示出来ない事に注意。
-// 	Dialog_Message( "タイトル", "メッセージ" );
-// 	switch( Dialog_YesNo( "YES／NO　ダイアログ", "メッセージ", DIALOG_FLAG_DEFAULT_NO ) ){
-// 		case DIALOG_RESULT_OK_YES:
-// 			Dialog_Message( "", "YESを選択" );
-// 			break;
-// 		case DIALOG_RESULT_NO:
-// 			Dialog_Message( "", "NOを選択" );
-// 			break;
-// 		case DIALOG_RESULT_CANCEL:
-// 			Dialog_Message( "", "キャンセル" );
-// 			break;
-// 	}
-// }
-
-
-// モードセレクト後のデータロード処理
-bool	LoadSaveData_ModeSelect()
-{
-	ModeSelectLoadSaveData();
-	WaitSaveLoad();
-	return IsCompleteSaveLoad();
-}
-
-// スロットセレクトの準備のためのデータロード処理
-bool	LoadSaveData_PreSlotSelect()
-{
-	TitleLoadSaveData();
-	WaitSaveLoad();
-	return IsCompleteSaveLoad();
-}
-
-// セーブ処理
-bool	SaveAllData(bool is_focus)
-{
-	Save(is_focus, "Contents_AutoSaveRetry");
-	WaitSaveLoad();
-	return IsCompleteSaveLoad();
-}	
-
-// タイトルに戻る際のセーブ
-bool	SaveAllData_ReturnTitle(bool is_focus)
-{
-	Save(is_focus, "Contents_AutoSaveRetry_ReturnTitle");
-	WaitSaveLoad();
-	return IsCompleteSaveLoad();	
-}
-
-
-//===============================================================================
-// 再起動
-string ReBoot()
-{
-	g_music.Stop( 1 );
-	// ジョブのコールバック等が仕掛けられている可能性があるので、ジョブの終了を待つ
-	WaitJob();
-	// 完全リセット
-	// マップ、UI、リソースの解放、サウンドの停止、ネットワークの停止等、システム系のリセットが行われる
-	// ゲームの進行状況は別途 Reset を呼び出す
-	SystemReset();	
-	
-	return "Boot";
-}
-
 
 //===============================================================================
 // 起動
 string Boot()
 {
+	Network_SetLocation(BOOTING);
+
 	WaitJob();
 	Reset( RESET_FLAG_ALL );
 
-	
-	if( IsInvite() ){
+/////// _STEAM_VER_ ///////
+	g_resource.CreateMousePointing();
+///////////////////////////
+
+	if( INVITATION_TYPE_NONE != GetInvitationType() ){
 		return "Invite";
 	}
 
-	return "Title";
+	return "StartToTitle";
 }
 
+//===============================================================================
+// 再起動
+string ReBoot()
+{
+	Network_SetLocation(BOOTING);
+
+	g_music.Stop( 1 );
+	// ジョブのコールバック等が仕掛けられている可能性があるので、ジョブの終了を待つ
+	WaitJob();
+
+	g_music.WaitStop();
+
+	// 完全リセット
+	// マップ、UI、リソースの解放、サウンドの停止、ネットワークの停止等、システム系のリセットが行われる
+	// ゲームの進行状況は別途 Reset を呼び出す
+	SystemReset();
+	
+	return "Boot";
+}
+
+void InitializeAll()
+{
+	// リソース開放
+	g_resource.FreeGroup(RESOURCE_GROUP_SCENE);
+	g_resource.FreeGroup(RESOURCE_GROUP_MODE);
+
+	// ネットワークコード終了
+	Network_End();
+
+	// 戻ってきた時のセーブロード待ち
+	WaitSaveLoad();
+
+	// UIを全部掃除
+	DeleteAllMenuUi();
+
+	//
+	Reset( RESET_FLAG_ALL );
+	
+	//
+	ResetControllerAssign();	// プレイヤーを一人に設定
+
+	//フェード用のUI作成
+	g_fade.Create();
+
+	// スクリプト起動時のリソース常駐を行う
+	g_resource.Entry("app:/UI/UiResourceGroup_BootScript.sgo", SYSTEM_GROUP_TITLE, 0);
+	g_resource.Wait();
+
+}
 
 //===============================================================================
 // 招待処理
 //  とりあえず失敗したらTitleに戻している
 string Invite()
 {
-	ResetControllerAssign();	// プレイヤーを一人に設定
+	g_music.Stop(g_music_fadetime);
+
+	g_fade.Wait(); // 事前にFadeout呼び出しがあれば同期、なければ何もしない
+
+	g_music.WaitStop();
+
+	//初期化
+	InitializeAll();
+
+//// LOGO_LOAD_SAVEDATA ////
+	// ロゴ前ロード
+	LogoLoadSaveData();
+	WaitSaveLoad();
+////////////////////////////
 
 	// 企業ロゴ表示
 	CompanyLogo();
+	Network_SetLocation(BOOT_COMPLETE);
 
 	// PlayGoチェック
 	if( false == IsDownloadComplete() ) {
-		Dialog_Message( "","PlayGoDownload_Invitation" );
-		return "Title";
+		g_fade.Wait();
+		g_fade.Transparency();
+		Dialog_Message( "PlayGoDownload_Invitation" );
+		return "StartToTitle";
 	}
 
-	TitleScene();
+	g_music.Play( "BGM_E5S01_Title" );
 
-	// スロット、モード選択共通。モード選択側で解放
-	int load_small = CreateLoadingSmallIcon();	// 右下ローディングアイコン
-	LoadResource("app:/Menu/MenuResourceGroup_SlotModeSelect.sgo", SYSTEM_GROUP_SCENE, 0 );
-	LoadResource("app:/Menu/SaveBG.sgo", SYSTEM_GROUP_SCENE, 0);
-	WaitCompleteResource();
-	CloseUi(load_small);	// 右下ローディングアイコン終了
+	g_fade.Wait();
+	g_fade.Transparency();
+	titleSaveDataLoad();
 
-	g_music.Play( "BGM_E4S01_TitleGamen" );			// BGM:タイトル画面
-
-	CreateFadeUi("ui_fade_screen_test");
-	FadeUiControl( FADE_CONTROL_OUT_TO_IN, 0.5 );
-
-	g_bg.Play("app:/Menu/SaveBG.sgo");	// 背景。モード選択で閉じる
-
-	WaitSaveLoad();	// 戻ってくる際のセーブ処理待機
-	SearchUpdateAddon();	//追加コンテンツの更新開始
-//	LoadSystemCommonAll();	// システムコンフィグとスロット4つ分のデータ読み込み
-	if( LoadSaveData_PreSlotSelect() == false )
-	{
-		Dialog_Message( "","Sys_LoadFailed_ToTitle" );
-
-		// ロードエラーはどうにもならないので、タイトルに戻す
-		FadeUiControl( FADE_CONTROL_IN_TO_OUT, 0.5 );
-		WaitFadeUiComplete();
-		DeleteFadeUi();
-
-		g_bg.Stop();	// 背景を閉じる
-		g_music.Stop(g_music_fadetime);
-		FreeResourceGroup( RESOURCE_GROUP_SCENE );	// リソース解放
-		return "Title";
-	}
 	WaitSearchUpdateAddon();	//追加コンテンツの更新終了を待つ
-
-	int mode = GetInvitationMode();
-	// パッケージを持っているかチェック
-	if( mode < 0 ) {
-		// Sys_InviteCancel
-		Dialog_Message( "","Sys_JoinGameCancel" );
-
-		FadeUiControl( FADE_CONTROL_IN_TO_OUT, 0.5 );
-		WaitFadeUiComplete();
-		DeleteFadeUi();
-
-		g_bg.Stop();	// 背景を閉じる
-		g_music.Stop(g_music_fadetime);
-		FreeResourceGroup( RESOURCE_GROUP_SCENE );	// リソース解放
-
-		return "Title";
-	}
-
-
-	// スロットをユーザーに選択させて、選択してモードを強制設定。
-	// オンラインシナリオへ移行する。
-	Reset( RESET_FLAG_SLOT_RESET );
-
-	int ui_handle = CreateSlotSelectUi(UISLOTSELECT_INVITATION);
-	WaitAllUiClose();
-	
-	// 招待状に設定されているモードに設定
-	FreeResourceGroup( RESOURCE_GROUP_MODE );
-	SetMode(mode);
-
-	// モード、ゲーム、実績データ読み込み
-	if( LoadSaveData_ModeSelect() == false ){
-		Dialog_Message( "","Sys_LoadFailed_ToTitle" );
-
-		// ロードエラーはどうにもならないので、タイトルに戻す
-		FadeUiControl( FADE_CONTROL_IN_TO_OUT, 0.5 );
-		WaitFadeUiComplete();
-		DeleteFadeUi();
-
-		g_bg.Stop();	// 背景を閉じる
-		g_music.Stop(g_music_fadetime);
-		FreeResourceGroup( RESOURCE_GROUP_SCENE );	// リソース解放
-		return "Title";
-	}
-	UnlockDownloadContents();	// ダウンロードコンテンツをアンロック
-
-
-	return "InviteOnlineMode";
-}
-
-//===============================================================================
-// タイトル画面
-void TitleScene()
-{
-	DeleteAllMenuUi();	// 念のためUIを掃除
-	g_bg.Clear();
-
-	Reset( RESET_FLAG_ALL );
-	
-	ResetControllerAssign();	// プレイヤーを一人に設定
-	
-	// タイトルプリロード
-	int load_small = CreateLoadingSmallIcon();	// 右下ローディングアイコン
-	LoadResource("app:/Menu/MenuResourceGroup_Title.sgo", SYSTEM_GROUP_SCENE, 0 );
-
-	string title_sgo_file = "";
-	// [言語変更対応]
-	int region_id = GetRegionID();
-	switch( region_id ) {
-	case _Region_JP:
-		title_sgo_file = "app:/Menu/Title.sgo";
-		break;
-	case _Region_US:
-	case _Region_EU:
-		title_sgo_file = "app:/Menu/Title_en.sgo";
-		break;
-	case _Region_CN:
-		title_sgo_file = "app:/Menu/Title_cn.sgo";
-		break;
-	}
-	LoadResource(title_sgo_file, SYSTEM_GROUP_SCENE, 0);
-
-	WaitCompleteResource();
-	CloseUi(load_small);	// 右下ローディングアイコン終了
-	
-
-	
-	CreateFadeUi("ui_fade_screen_test");
-	FadeUiControl( FADE_CONTROL_OUT_TO_IN, 0.5 );
-
-//	int ui_handle = CreateUi("ui_title");
-
-	g_bg.Play(title_sgo_file);
-
-	g_music.Play( "BGM_E4S01_TitleGamen" );			// BGM:タイトル画面
-
-	int ui_text_handle = CreateUi("ui_title_text");	// ボタン入力確認UI
-	
-	WaitSaveLoad();	// 戻ってくる際のセーブ処理待機
-	SearchUpdateAddon();	//追加コンテンツの更新開始
-	TitleLoadSaveData();	// システムコンフィグとスロット選択用データロード開始
-	
-	WaitFadeUiComplete();
-	WaitUiClose(ui_text_handle);
-
-	// 操作に使用するデバイスの表示(パッドorキーボード)
-	Dialog_ControllerMessage();
-
-	// オートセーブ警告表示
-	Dialog_TextureMessage( "", "Sys_AutoSaveWarning" );
-	
-	CloseUi(load_small);	// 右下ローディングアイコン終了
-	
-	WaitSearchUpdateAddon();	//追加コンテンツの更新終了を待つ
-	// ロード終了待機
 	WaitSaveLoad();
-	if( IsCompleteSaveLoad() == false )
-	{
-		// ここでのロードは停止しない(エラーはロード処理中で表示)
+
+	if( IsCompleteSaveLoad() == false ) {
+		Dialog_Message( "Sys_LoadFailed_ToTitle" );
+		return "StartToTitle";
 	}
 
+	g_fade.Black(); // 画面は黒で開始
 
-	// 次の画面へ	
-	FadeUiControl( FADE_CONTROL_IN_TO_OUT, 0.5 );
-	WaitFadeUiComplete();
-	DeleteFadeUi();
+	g_bg.Play("app:/ui/lyt_SlotSelect_BG.sgo");
+	g_main_frame.Play("app:/ui/lyt_SlotFrame.sgo");
+	g_main_frame.GetObject().SetDrawOrder(g_fade.GetObject());
 
-	g_bg.Stop();
-}
-//===============================================================================
-// 企業ロゴ
-void CompanyLogo()
-{
-	// ロゴを表示したことがない場合のみ処理する
-	if( false == IsDisplayLogo() ) {
-		int load_small = CreateLoadingSmallIcon();	// 右下ローディングアイコン
-		LoadResource("app:/Menu/MenuResourceGroup_CompanyLogo.sgo", SYSTEM_GROUP_SCENE, 0 );
-		WaitCompleteResource();
-		CloseUi(load_small);	// 右下ローディングアイコン終了
+	// スロット選択
+	UiObject @object = _CreateSlotSelect();
+	g_fade.In();
 
-		
-		int logo;
-		
-		int region_id = GetRegionID();
-		if( true || region_id  == _Region_JP )
-		{
-			logo = PlayLogoMovie("app:/Menu/D3LOGO.mp4",true);
-			WaitUiClose(logo);
-			
-			logo = PlayLogoAnimation("app:/Menu/Logo_cri.sgo", true );
-			WaitUiClose(logo);
+	object.WaitCloseRequest();
 
-			logo = PlayLogoAnimation("app:/Menu/Logo_havok.sgo", true );
-			WaitUiClose(logo);
-			
-		}
-		else
-		{
-			if( region_id  == _Region_US )
-			{
-				logo = PlayLogoAnimation("app:/Menu/Logo_xseed.sgo", true);
-				WaitUiClose(logo);
+	string ret_string;
+	if( GetUiExitCode() == Hui_ReturnOK) {
+		int invitation_type = GetInvitationType();
+
+		int mode;
+		if( INVITATION_TYPE_INVITE == invitation_type ) {
+			// 招待された側のみパッケージチェックを行う
+			mode = GetInvitationMode();
+			// パッケージを持っているかチェック
+			if( mode < 0 ) {
+				// Sys_InviteCancel
+				Dialog_Message( "Sys_JoinGameCancel" );
+
+				return "StartToTitle";
 			}
-			else
-			{//	( region_id  == _Region_EU )
-
-				logo = PlayLogoAnimation("app:/Menu/Logo_pqube.sgo", true);
-				WaitUiClose(logo);
-			}
-
-			logo = PlayLogoMovie("app:/Menu/D3LOGO.mp4",true);
-			WaitUiClose(logo);
-
-			logo = PlayLogoAnimation("app:/Menu/Logo_cri.sgo", true);
-			WaitUiClose(logo);
-
-			logo = PlayLogoAnimation("app:/Menu/Logo_havok.sgo", true);
-			WaitUiClose(logo);
-			
+		} else if( INVITATION_TYPE_PLAYTOGETHER_HOST == invitation_type ) {
+			// とりあえずオンラインモードが選択されたことにする
+			mode = GetModeNo(GAME_ONLINE_SCENARIO,0);
+		} else {
+			// テスト用経路、boot経由での本番では利用されない
+			mode = GetModeNo(GAME_ONLINE_SCENARIO,0);
 		}
+		WaitSaveLoad();
 		
-		logo = PlayLogoAnimation("app:/Menu/Logo_sandlot.sgo", true );
-		WaitUiClose(logo);
+		// 招待状に設定されているモードに設定
+		FreeResourceGroup( RESOURCE_GROUP_MODE );
+		if( !SetMode(mode) ) {
+			Dialog_Message( "Lobby_NotHaveContents" );
+			return "StartToTitle";
+		}
 
-		SetDisplayedLogo(true);
+		// モード、ゲームデータ読み込み
+		if( LoadSaveData_ModeSelect() == false ){
+			// エラーがあったのでスロットセレクトに
+			Dialog_Message( "Sys_LoadFailed_ToTitle" );
+			return "StartToTitle";
+		}
+		UnlockDownloadContents();
+
+		UpdateAchievementCounter( false, false );
+		AchievementAddCount("PlayCount");
+
+		DeleteAllMenuUi();
+
+		return "OnlineMode";
 	}
+
+	return "StartToTitle";
 }
 
-
 //===============================================================================
-// タイトル画面
-string Title()
+//タイトル開始まで
+string StartToTitle()
 {
+	g_music.Stop(g_music_fadetime);
+
+	g_fade.Wait(); // 事前にFadeout呼び出しがあれば同期、なければ何もしない
+	g_fade.Black(); // 画面は黒で開始
+
 	// タイトルに戻った段階で招待情報はクリアされる
 	ClearInvitation();
+	ClearPlayTogether();
+	
+	g_music.WaitStop();
+
+	//初期化
+	InitializeAll();
+
+//// LOGO_LOAD_SAVEDATA ////
+	// ロゴ前ロード
+	LogoLoadSaveData();
+	WaitSaveLoad();
+////////////////////////////
 
 	// 企業ロゴ表示
-	Dialog_Message( "", "MODDED_WARNING" );
-	
 	CompanyLogo();
 
-	DeleteAllMenuUi();	// 念のためUIを掃除
-	g_bg.Clear();
-
-	Reset( RESET_FLAG_ALL );
-	
-	ResetControllerAssign();	// プレイヤーを一人に設定
-	
-	// タイトルプリロード
-	int load_small = CreateLoadingSmallIcon();	// 右下ローディングアイコン
-	LoadResource("app:/Menu/MenuResourceGroup_Title.sgo", SYSTEM_GROUP_SCENE, 0 );
-
-	string title_sgo_file = "";
-	// [言語変更対応]
-	int region_id = GetRegionID();
-	switch( region_id ) {
-	case _Region_JP:
-		title_sgo_file = "app:/Menu/Title.sgo";
-		break;
-	case _Region_US:
-	case _Region_EU:
-		title_sgo_file = "app:/Menu/Title_en.sgo";
-		break;
-	case _Region_CN:
-		title_sgo_file = "app:/Menu/Title_cn.sgo";
-		break;
-	}
-	LoadResource(title_sgo_file, SYSTEM_GROUP_SCENE, 0);
-
-	WaitCompleteResource();
-	CloseUi(load_small);	// 右下ローディングアイコン終了
-	
-
-	
-	CreateFadeUi("ui_fade_screen_test");
-	FadeUiControl( FADE_CONTROL_OUT_TO_IN, 0.5 );
-
-//	int ui_handle = CreateUi("ui_title");
-
-	g_bg.Play(title_sgo_file);
-
-	g_music.Play( "BGM_E4S01_TitleGamen" );			// BGM:タイトル画面
-
-	int ui_text_handle = CreateUi("ui_title_text");	// ボタン入力確認UI
-	
-	WaitSaveLoad();	// 戻ってくる際のセーブ処理待機
-	SearchUpdateAddon();	//追加コンテンツの更新開始
-	TitleLoadSaveData();	// システムコンフィグとスロット選択用データロード開始
-	
-	WaitFadeUiComplete();
-	WaitUiClose(ui_text_handle);
-
-	// 操作に使用するデバイスの表示(パッドorキーボード)
-	Dialog_ControllerMessage();
-
-	// オートセーブ警告表示
-	Dialog_TextureMessage( "", "Sys_AutoSaveWarning" );
-	
-	CloseUi(load_small);	// 右下ローディングアイコン終了
-	
-	WaitSearchUpdateAddon();	//追加コンテンツの更新終了を待つ
-	// ロード終了待機
+	g_fade.Wait();
+	g_fade.Transparency();
+	Network_SetLocation(BOOT_COMPLETE);
 	WaitSaveLoad();
-	if( IsCompleteSaveLoad() == false )
-	{
-		// ここでのロードは停止しない(エラーはロード処理中で表示)
-	}
-
-
-	// 次の画面へ	
-	FadeUiControl( FADE_CONTROL_IN_TO_OUT, 0.5 );
-	WaitFadeUiComplete();
-	DeleteFadeUi();
-
-	g_bg.Stop();
+	CheckInvitation();
+	g_fade.Black();
 	
+	// タイトル表示
+	Title();
+
+	if( IsTGSMode() ) {
+		return "HQMain";
+	}
 	return "SlotSelect";
 }
 
 
+
+class Logo {
+	UiObject@ m_handle = UiObject();
+	string m_current;
+
+	int play(string file,bool is_button_skipable) {
+		m_current = file;
+
+		if( false == IsLogoDisplayable(m_current) ) {
+			return 0;
+		}
+
+		bool is_movie = (-1 != file.findLast(".MP4") );
+
+		if( false == is_movie ) {
+			string arg = "[tex_path|";
+			arg += file;
+			arg += "]";
+			arg += "[skippable|";
+			if ( is_button_skipable==true)
+			{	arg += "true";		}
+			else
+			{	arg += "false";		}
+			arg += "]";
+			@m_handle = CreateUiFileOpt("app:/ui/lyt_Logo_sandlot.sgo",arg);
+			g_fade.In();
+		} else {
+			@m_handle = UiObject(PlayLogoMovie("APP:/UI/"+file,is_button_skipable));
+		}
+
+		return 1;
+	}
+	void wait(){
+		m_handle.WaitClose();
+		g_fade.Wait();
+
+		SetLogoDisplayed(m_current);
+		m_current = "";
+	}
+};
+
+//-----------------------------
+// 企業ロゴ
+void CompanyLogo()
+{
+	g_resource.Entry("app:/UI/UiResourceGroup_CompanyLogo.sgo", SYSTEM_GROUP_SCENE, 0);
+	g_resource.Wait();
+
+	Logo logo = Logo();
+
+	logo.play("D3LOGO.MP4",true);
+	logo.wait();
+
+	logo.play("LOGO_CRIWARE.DDS",true);
+	logo.wait();
+
+	logo.play("LOGO_HAVOK.DDS",false);
+	logo.wait();
+	
+	logo.play("LOGO_SANDLOT.DDS",true);
+	logo.wait();
+
+	g_fade.Out();
+	g_fade.Wait();
+
+	// ロゴ表示で使用されたリソースを開放
+	g_resource.FreeGroup(SYSTEM_GROUP_SCENE);
+}
+
+void titleSaveDataLoad()
+{
+	WaitSaveLoad();	// 戻ってくる際のセーブ処理待機
+
+	SearchUpdateAddon();	//追加コンテンツの更新開始
+
+	// tgsモードはロードは行わない
+	if( false == IsTGSMode() ) {
+		TitleLoadSaveData();	// システムコンフィグとスロット選択用データロード開始
+	}
+}
+
+//-----------------------------
+// タイトル画面
+void Title()
+{
+	//リソース読み込み
+	g_resource.Entry("app:/UI/UiResourceGroup_Title.sgo", SYSTEM_GROUP_SCENE, 0);
+	g_resource.Wait();
+
+	g_bg.Play("app:/ui/lyt_TitleBg.sgo");
+	g_music.Play( "BGM_E5S01_Title" );			// BGM:タイトル画面
+
+	g_fade.In();
+
+	UiObject@ ui_title = CreateUiFile("app:/ui/lyt_Title.sgo");
+
+	//次の画面のリソース読み込み開始
+	g_resource.Entry("app:/UI/UiResourceGroup_SlotSel.sgo", SYSTEM_GROUP_SCENE, 0);
+	g_resource.Entry("app:/UI/UiResourceGroup_ModeSel.sgo", SYSTEM_GROUP_SCENE, 0);
+
+	titleSaveDataLoad();
+
+	g_fade.Wait();
+
+	ui_title.WaitClose();
+	WaitSearchUpdateAddon();	//追加コンテンツの更新終了を待つ
+	
+	
+	g_resource.Wait();
+	// ロード終了待機
+	WaitSaveLoad();
+	g_sys_cfg_object.WaitComplete();
+	if( IsCompleteSaveLoad() == false )
+	{
+		// ここでのロードは停止しない(エラーはロード処理中で表示)
+	}
+
+	// 次の画面へ
+	g_fade.Out();
+	g_fade.Wait();
+	g_bg.Stop();
+}
+
+//===============================================================================
+// ゲームショウのゲーム終了後画面
+string TSGEnding()
+{
+	g_resource.Entry("app:/UI/UiResourceGroup_TGSEnding.sgo", SYSTEM_GROUP_SCENE, 0);
+	g_resource.Wait();
+	g_bg.Play("app:/ui/lyt_TGS2016_END.sgo");
+	
+	//Dialog_Message("Sys_PressButton");
+	UiObject@ tgs = CreateUiFile("app:/ui/lyt_TgsEnd.sgo");
+	g_fade.In();
+	tgs.WaitClose();	//uiが
+	
+	g_fade.Out();
+	g_fade.Wait();
+	
+	g_bg.Stop();
+	
+	return "Boot";
+}
+
+UiObject@	_CreateSlotSelect()
+{
+	int slot_select_mode = UISLOTSELECT_NORMAL;
+	if( INVITATION_TYPE_NONE != GetInvitationType() ){
+		slot_select_mode = UISLOTSELECT_INVITATION;
+	}
+	int ui_handle = CreateSlotSelectUi2(slot_select_mode);
+	UiObject @object = UiObject(ui_handle);
+
+	return object;
+}
 
 //===============================================================================
 // スロット選択
 string SlotSelect()
 {
 	Reset( RESET_FLAG_SLOT_RESET );
+	g_bg.Play("app:/ui/lyt_SlotSelect_BG.sgo");
+	g_main_frame.Play("app:/ui/lyt_SlotFrame.sgo");
+	g_main_frame.GetObject().SetDrawOrder(g_fade.GetObject());
 
-	// スロット、モード選択共通。モード選択側で解放
-	int load_small = CreateLoadingSmallIcon();	// 右下ローディングアイコン
-	LoadResource("app:/Menu/MenuResourceGroup_SlotModeSelect.sgo", SYSTEM_GROUP_SCENE, 0 );
-	LoadResource("app:/Menu/SaveBG.sgo", SYSTEM_GROUP_SCENE, 0);
-	WaitCompleteResource();
-	CloseUi(load_small);	// 右下ローディングアイコン終了
+	//UiObject @object = CreateUiFileOpt("app:/ui/lyt_ModeSelect.sgo","[UISLOTSELECT|"+UISLOTSELECT_NORMAL+"]");
+	UiObject @object = _CreateSlotSelect();
+	object.SetDrawOrder(@g_prev_object);
+	g_fade.In();
 
-	
-	CreateFadeUi("ui_fade_screen_test");
-	FadeUiControl( FADE_CONTROL_OUT_TO_IN, 0.5 );
+	object.WaitCloseRequest();
 
-	g_bg.Play("app:/Menu/SaveBG.sgo");	// 背景。モード選択で閉じる
-
-	int ui_handle = CreateSlotSelectUi(UISLOTSELECT_NORMAL);
-	WaitAllUiClose();
-	
-	if( GetUiExitCode() ==  UISLOTSELECT_RESULT_OK)
+	string ret_string;
+	if( GetUiExitCode() == Hui_ReturnOK)
 	{
-		return "ModeSelect";
+		ret_string = "ModeSelect";
 	}
 	else
 	{
-		FadeUiControl( FADE_CONTROL_IN_TO_OUT, 0.5 );
-		WaitFadeUiComplete();
-		DeleteFadeUi();
-
-		g_bg.Stop();	// 背景を閉じる
-		FreeResourceGroup( RESOURCE_GROUP_SCENE );	// リソース解放
-		return "Title";
+		g_fade.Out();
+		ret_string = "StartToTitle";
 	}
+	return ret_string;
 }
 
 
@@ -567,141 +499,181 @@ string ModeSelect()
 {
 	Reset( RESET_FLAG_MODE_RESET );
 
-	int ui_handle = CreateUi("ui_modeselect");
-	WaitAllUiClose();
-	
-	// 画面分割時はトロフィーに関する警告表示
-	if( PlayerCount() > 1 ){
-		Dialog_Message( "","GameMode_Warning2Player" );
+	g_fade.In();
+
+	g_bg.Play("app:/ui/lyt_SlotSelect_BG.sgo");
+	g_main_frame.Play("app:/ui/lyt_SlotFrame.sgo");
+	g_main_frame.GetObject().SetDrawOrder(g_fade.GetObject());
+
+	UiObject@ ui_handle = CreateUiFile("app:/ui/lyt_ModeSelect.sgo");
+	@g_prev_object = ui_handle;
+	ui_handle.WaitCloseRequest();
+
+	//キャンセルならもどる
+	if( GetUiExitCode() ==  Hui_ReturnCancel)
+	{
+		return "SlotSelect";	//戻る
 	}
 
-	// モードステータスロード(キャンセルでなかったら実行)
-	if( GetUiExitCode() == UIMODESELECT_RESULT_CANCEL ){
-		DeleteFadeUi();
-		g_bg.Stop();
+	g_resource.FreeGroup(RESOURCE_GROUP_MODE);
+
+	// 返値によりモードを切り替え
+	int ret = GetUiExitCode();
+	int mode_id = ((ret & 0xff00) >> 8);	// GameModeID
+	int mode_no = ( ret & 0x00ff); 			// pkgの順
+
+	if( mode_id == UIMODESELECT_RESULT_CANCEL ) {
 		return "SlotSelect";
 	}
-	
-	// モード設定
-	FreeResourceGroup( RESOURCE_GROUP_MODE );
-	SetMode(GetUiExitCode());	// キャンセルで除外されてなければゲームモードIDが帰ってくる
 
-	// モード、ゲームデータ読み込み
-	if( LoadSaveData_ModeSelect() == false ){
-		// エラーがあったのでスロットセレクトに
-		Dialog_Message( "","Sys_LoadFailed_ToSlotSelect" );
-		DeleteFadeUi();
-		g_bg.Stop();
-		return "SlotSelect";		
+	// モード設定
+
+	string return_jmp = "StartToTitle";
+
+	if( UIMODEINDEX_ERROR != mode_no ) {
+		switch( mode_id ) {
+		case GAME_OFFLINE_SCENARIO:
+			return_jmp = "HQMain";
+			break;
+		case GAME_ONLINE_SCENARIO:
+			return_jmp = "OnlineMode";
+			break;
+		}
+
+		SetMode(mode_no);
+
+		// モード、ゲームデータ読み込み
+		if( LoadSaveData_ModeSelect() == false ){
+			// エラーがあったのでスロットセレクトに
+			Dialog_Message( "Sys_LoadFailed_ToSlotSelect" );
+			
+			@g_prev_object = UiObject();
+			return "SlotSelect";
+		}
+		UnlockDownloadContents();
+		UpdateAchievementCounter( false, false );
+		AchievementAddCount("PlayCount");
 	}
-	
-	UnlockDownloadContents();	// ダウンロードコンテンツをアンロック
-	UpdateAchievementCounter( false );
-	AchievementAddCount("PlayCount");	// ゲーム開始回数
 
 	g_music.Stop(g_music_fadetime);
 
-	FadeUiControl( FADE_CONTROL_IN_TO_OUT, 0.5 );
-	WaitFadeUiComplete();
-	DeleteFadeUi();
+	g_fade.Out();
+	g_fade.Wait();
 
-	g_bg.Stop();	// 背景を閉じる（開始はスロット選択）
+	DeleteAllMenuUi();
+	g_fade.Black();
 
-	FreeResourceGroup( RESOURCE_GROUP_SCENE );	// リソース解放
-
-	switch( GetGameMode() ) { // 選択されたゲームモードに合わせて分岐（命令追加）
-	case GAME_OFFLINE_SCENARIO:
-		return "MainMenu";
-	case GAME_ONLINE_SCENARIO:
-		return "OnlineMode";
-	case GAME_VERSUS:
-		return "VersusMode";
-	default:
-		break;
-	}
-	return "SlotSelect";
+	return return_jmp;
 }
-
 
 //===============================================================================
-// メインメニュー(本部画面)
-string MainMenu()
+// 作戦司令本部画面
+string HQMain()
 {
-	DeleteAllMenuUi();	// 念のためUIを掃除
-	g_bg.Clear();
+	g_resource.Entry("app:/ui/UiResourceGroup_HQ.sgo", SYSTEM_GROUP_SCENE, 0);
+	g_resource.EntryModeImage(0);
+	g_resource.Wait();
 
+	g_fade.Wait();
 
-	int load_small = CreateLoadingSmallIcon();	// 右下ローディングアイコン
-	LoadResource("app:/Menu/MissionClear.sgo", SYSTEM_GROUP_MODE, 0 );
-	LoadResource("app:/Menu/MissionFailed.sgo", SYSTEM_GROUP_MODE, 0 );
-	LoadResource("app:/Menu/MenuResourceGroup_HQ.sgo", SYSTEM_GROUP_SCENE, 0 );
-	LoadResource("app:/Menu/Menu_BG01.sgo", SYSTEM_GROUP_SCENE, 0);
-	LoadMissionImageResource( 0 );
-	WaitCompleteResource();
-	CloseUi(load_small);	// 右下ローディングアイコン終了
-
-
-
-	
-	g_bg.Play("app:/Menu/Menu_BG01.sgo");
-	int ui_handle = Create3DModelUi("ui_hq");
-
-
-	CreateFadeUi("ui_fade_screen_test");
-	FadeUiControl( FADE_CONTROL_OUT_TO_IN, 0.5 );
+	g_bg.Play("app:/ui/lyt_bg.sgo");
+	g_main_frame.Play("app:/ui/lyt_MainFrame.sgo");
+	g_main_frame.GetObject().SetDrawOrder(g_fade.GetObject());
 
 	g_music.Play( GetMainMenuBgm() );	// BGM:メニュー画面
-	WaitAllUiClose();
+
+	UiObject@ ui_handle3D = CreateUiFile("app:/ui/lyt_HUiHQ3DModel.sgo");
+
+	UiObject@ ui_handle = CreateUiFile("app:/ui/lyt_HUiHQMain.sgo");
+
+	//-- フェードイン
+	g_fade.In();
+	g_fade.Wait();
+
+	//-- UI操作終了 --
+	ui_handle.WaitCloseRequest();
 	g_music.Stop( g_music_fadetime );
+	//
+	if( GetUiExitCode() ==  Hui_ReturnOK)
+	{
+		//ミッションへ
+		g_fade.Out();
+		g_fade.Wait();
 
-	FadeUiControl( FADE_CONTROL_IN_TO_OUT, 0.5 );
-	WaitFadeUiComplete();
-	DeleteFadeUi();
-
-	g_bg.Stop();		// BGは自動で閉じないので直接閉じさせる。
-
-	FreeResourceGroup( RESOURCE_GROUP_SCENE );
-
-	if( GetUiExitCode() == UIHQ_GOTO_MISSION ){
 		return "PlayMission_Offline";
-	}else{
-		// セーブ
-		if( SaveAllData_ReturnTitle(true) == false )
-		{
-			// セーブに失敗
-		}
-		
-		// タイトルへ
-		return "Title";
 	}
 
-}
+	//タイトルに戻るに設定された
+	if( false == IsTGSMode() && GetUiExitCode() ==  Hui_HQMain_Return_GotoTitle)
+	{
+		SaveAllData_ReturnTitle(true);
+	}
 
+	//タイトルに戻る
+	g_fade.Out();
+	g_fade.Wait();
+
+	ui_handle3D.Close();
+
+	g_music.WaitStop();
+
+	return "StartToTitle";	//todo:
+}
 
 //===============================================================================
 // ミッション共通処理
 int PlayMission_Common()
 {
-	DeleteAllMenuUi();	// 念のためUIを掃除
-	g_bg.Clear();
+	g_fade.Out();
+	g_fade.Wait();
+	DeleteAllMenuUi();
 
-	FreeResourceGroup( RESOURCE_GROUP_SCENE );
+	g_resource.FreeGroup(RESOURCE_GROUP_SCENE);
+
+	g_resource.Entry("app:/ui/UiResourceGroup_InMission.sgo", SYSTEM_GROUP_SCENE, 0);
+	g_resource.EntryLoadinImage(0);
 
 	SoldierTypeSortieAddCount();	// 兵科ごとの出撃回数カウントアップ
 
 	// ネットワークの現在位置を更新する(エラー表示用)
 	Network_SetLocation(GAME_LOADING);
 
-	if( false == Network_Wait_MissionSync() ) {
-		Dialog_Message("","Online_Game_Disconnect");
+	// ホスト側のモード番号をチェックして正しいモードでなれけばモード切替を行う
+
+	int new_mode_index = 0;
+	if( MISSIONSYNC_ERROR == Network_Wait_MissionPreSync(new_mode_index) ) {
+		Dialog_Message("Online_Game_Disconnect");
+
+		g_fade.Black();
 		/// 通信に失敗したので、ロビーへ戻されます
 		/// 切断済みになっていますが、GAME_LOADINGなのでメッセージの表示が必要です。
 		return MISSION_RESULT_LOBBY;
 	}
 
+	if( false == ApplyModeNo(new_mode_index) ) {
+		return MISSION_RESULT_RETURNTITLE;
+	}
+
+	if( false == Network_Wait_MissionSync() ) {
+		Dialog_Message("Online_Game_Disconnect");
+
+		g_fade.Black();
+		/// 通信に失敗したので、ロビーへ戻されます
+		/// 切断済みになっていますが、GAME_LOADINGなのでメッセージの表示が必要です。
+		return MISSION_RESULT_LOBBY;
+	}
+
+	// ホスト側のモード番号をチェックして正しいモードでなれけばモード切替を行う
+	
+
 	SetUsedWeapon();
+	ResetResult();				// アイテムの取得状態を完全にリセット
 	
 	int result;
+
+	g_resource.Wait();
+
+	SetMemoryType(2);
 	for(;;){
 		// ネットワークのゲームセッションをリセットする(ローカルの状態をリセットする)
 		Network_Session_Reset();
@@ -709,54 +681,70 @@ int PlayMission_Common()
 		result = Mission();
 		if( result != MISSION_RESULT_RETRY) break;
 	}
+	// ゲームシーン開放
+	g_resource.FreeGroup(RESOURCE_GROUP_SCENE);
 
-	if( result == MISSION_RESULT_CLEAR ) {
-		if( false == Network_Wait_ResultSync() ) {
-			/// 通信に失敗したので、ロビーへ戻されます、エラーは自動的に表示されています
-			return MISSION_RESULT_LOBBY;
-		}
+	MemoryDump();
+	SetMemoryType(1);
+
+	//フェード用のUI再作成
+	g_fade.Black();
+
+	switch( result ) {
+	case MISSION_RESULT_ABORT:
+	case MISSION_RESULT_CLEAR:
+		Network_Wait_ResultSync();
+		break;
 	}
 
 	// ネットワークのゲームセッションを終了する
 	Network_Session_End();
 
 	// ネットワークの現在位置を更新する(エラー表示用)
-	Network_SetLocation(GAME_LOADING);
-
-//	// ゲームが終わった後は特殊な解放が必要なので、専用処理を呼び出す
-//	ReleaseGameResource(); // FreeResourceGroup を拡張するべき案件なので、ReleaseGameResourceは破棄：野口
-	FreeResourceGroup( RESOURCE_GROUP_SCENE );
-
+	Network_SetLocation(MENU_ROOM);
 
 	return result;
 }
 
-
-//===============================================================================
-// オフラインミッション
+// オフラインミッションを実行する
 string PlayMission_Offline()
 {
 	AchievementAddCount("OfflinePlayCount");	// オフラインミッション開始回数
 
-	
 	// デモの再生
-	FreeResourceGroup( RESOURCE_GROUP_SCENE );
+	g_resource.FreeGroup(RESOURCE_GROUP_SCENE);
 	Before();
-	FreeResourceGroup( RESOURCE_GROUP_SCENE );
-
+	g_resource.FreeGroup(RESOURCE_GROUP_SCENE);
 	
-	Chat_Create();
+	if( false == IsTGSMode() ) {
+		g_chat.Rebuild();
+	}
 	int result = PlayMission_Common();
-	Chat_Destroy();
+	g_chat.Release();
 
+	if( MISSION_RESULT_RETURNTITLE == result ) {
+		return "StartToTitle";
+	}
 	if( result == MISSION_RESULT_CLEAR )
 	{
-		return "Result_Offline";
+		g_is_mission_clear = true;
+		
+		if( IsTGSMode() ) {
+			return "TSGEnding";
+		} else {
+			return "Result_Offline";
+		}
 	}else{
-		return "MainMenu";
+		g_is_mission_clear = false;
+
+		if( IsTGSMode() ) {
+			return "TSGEnding";
+		} else {
+			return "Result_Offline";
+			// return "HQMain";
+		}
 	}
 }
-
 
 //===============================================================================
 // オンラインミッション
@@ -766,165 +754,241 @@ string PlayMission_Online()
 	
 	int result = PlayMission_Common();
 
-	if( result == MISSION_RESULT_CLEAR ){
-		return "Result_Online";
-	}else{
-		// ルームとの通信が出来ている場合のみルームに戻す
-		if( Network_IsRoomConnected() ) {
-			return "Room";
+	g_is_mission_clear = false;
+
+	if( MISSION_RESULT_RETURNTITLE == result ) {
+		return "StartToTitle";
+	}
+
+	// ルームとの通信が出来ている場合のみルームに戻す
+	if( Network_IsRoomConnected() ) {
+		if( result == MISSION_RESULT_CLEAR ){
+			g_is_mission_clear = true;
+			return "Result_Online";
+		}else{
+			return "Result_Online";
+		}
+	} else {
+		if( result != MISSION_RESULT_LOBBY ) {
+			g_fade.Wait();
+			g_fade.Transparency();
+
+			Dialog_Message("Online_Game_Disconnect");
+			
+			g_fade.Black();
 		}
 	}
 
-	Chat_Destroy();
-	// 
-	Test_Network_LeaveRoom();
+	g_chat.Release();
+	Network_LeaveRoom();
 
-	// セーブ
-	if( SaveAllData(true) == false ){
-		// セーブ失敗
-	}
-	return "PreLobby";
+	return "Lobby";
 }
 
 
-//===============================================================================
-// ミッションリザルト画面
-string Result()
+void PlayEnding(string lyt_sgo,string bgm)
 {
-
-	int ui_handle = CreateUi("ui_missionresult" );
-	WaitAllUiClose();
-	
-	return "MainMenu";
-}
-
-//===============================================================================
-// ミッションリザルト画面
-void Result_Common()
-{
-	DeleteAllMenuUi();	// 念のためUIを掃除
-	g_bg.Clear();
-
-	g_bg.Play("app:/Menu/Menu_BG01.sgo");	// 背景表示
-
-	ResolveResult();	// ドロップアイテムを確定
-	int ui_handle = CreateUi("ui_missionresult" );
-	g_music.Play( GetMainMenuBgm() );
-
-	ApplyResult();	// ミッション結果を反映
-	UpdateAchievementCounter( true );
-
-	// 武器制限アンロックチェック
-	CheckUnlockArmorWeaponLimit();
-
-	Save(false, "Contents_AutoSaveRetry");	// セーブ開始	
-	WaitUiClose(ui_handle);
-
-	WaitSaveLoad();
-	if( IsCompleteSaveLoad() == false ){
-		// セーブ失敗
+	int ui_handle_end = Ending(lyt_sgo);
+	if (ui_handle_end != -1)
+	{
+		g_music.Play(bgm);
+		UiObject @object = UiObject(ui_handle_end);
+		object.WaitClose();
 	}
-
-	ClearResult();		// ドロップアイテムをクリア
 }
+
+//DLCは共通のエンディング
+void DLCEnding()
+{
+	PlayEnding("app:/ui/lyt_EndingDLC.sgo","BGM_E5S08_EndingTelopOnline");
+}
+
+// BGMの言語切替がある場合の付加文字を取得する
+string GetBGMLangString()
+{
+	int lang = GetLanguage();
+	if( lang == EN )
+	{
+		return "_en";
+	}
+	else if ( lang == CN )
+	{
+		return "_cn";
+	}
+	else if ( lang == KR )
+	{
+		return "_kr";
+	}
+	else
+	{
+		return "";
+	}
+}
+
 //===============================================================================
 // オフライン用ミッションリザルト
 string Result_Offline()
 {
-	// エンディング
-	if( GetContentID() == 0 ){
-		int handle = Ending(true);
-		if( handle != 0 ){
-			g_music.Play( "BGM_E4S08_EndingTelop" );
-			WaitUiClose(handle);
-			g_music.Stop(1);
+	if(  g_is_mission_clear == true ){
+		if( IsLastMission() ) {
+			g_fade.In();
+			g_music.Stop( g_music_fadetime );
+			g_music.WaitStop();
+			
+			if( GetContentID() == 0 ) {
+				//エンディング
+				PlayEnding("app:/ui/lyt_Ending.sgo","BGM_E5S07_EndingTelop");
+				
+				//エンドクレジット
+				string end_staff_bgm = "BGM_E5S05_Staffroll" + GetBGMLangString();
+				PlayEnding("app:/ui/lyt_EndCredit.sgo",end_staff_bgm);
+			} else {
+				DLCEnding();
+			}
+			
+			g_fade.Out();
+		}
+	}
 
-			handle = EndCredit(true);	// エンディング入ったらつづけてクレジット
-			g_music.Play( "BGM_E4S06_StaffRoll" );
-			WaitUiClose(handle);
-			g_music.Stop(1);
-		}
-	}
-	else{
-		// ＤＬＣミッションパックではオンライン用エンディングを流す
-		int handle = OnlineEnding(true);
-		if( handle != 0 ){
-			g_music.Play( "Jingle_OnlineClearedFinal" );
-			WaitUiClose(handle);
-			g_music.Stop(1);
-		}
-	}
-	
-	Result_Common();
-	
-	return "MainMenu";
+	//
+	Result_Common( g_is_mission_clear );
+
+	return "HQMain";
 }
+
+string EndingTest()
+{
+	//エンディング
+	g_fade.In();
+	g_music.Stop( g_music_fadetime );
+	g_music.WaitStop();
+	
+	//エンディング
+	PlayEnding("app:/ui/lyt_Ending.sgo","BGM_E5S07_EndingTelop");
+	
+	//エンドクレジット
+	string end_staff_bgm = "BGM_E5S05_Staffroll" + GetBGMLangString();
+	PlayEnding("app:/ui/lyt_EndCredit.sgo",end_staff_bgm);
+	
+	return "";
+}
+
 //===============================================================================
 // オンライン用ミッションリザルト
 string Result_Online()
 {
-	// オンラインエンディング
-	int handle = OnlineEnding(true);
-	if( handle != 0 ){
-		g_music.Play( "Jingle_OnlineClearedFinal" );
-		WaitUiClose(handle);
-		g_music.Stop(1);	
+	if(  g_is_mission_clear == true ){
+		if( IsLastMission() ) {
+			//通常のパッケージの時のみエンディングを呼び出す
+			g_fade.In();
+			g_music.Stop( g_music_fadetime );
+			g_music.WaitStop();
+			
+			if( GetContentID() == 0 ) {
+				//エンディング
+				PlayEnding("app:/ui/lyt_EndingOnline.sgo","BGM_E5S08_EndingTelopOnline");
+			}
+			else
+			{
+				DLCEnding();
+			}
+			g_fade.Out();
+		}
 	}
 
-	Result_Common();
+	Result_Common( g_is_mission_clear );
 
 	return "Room";
 }
 
-
-
 //===============================================================================
-// サーバ選択画面
-string _OnlineMode(bool is_invitation)
+// ミッションリザルト画面
+void Result_Common(bool is_mission_clear )
 {
 	DeleteAllMenuUi();	// 念のためUIを掃除
-	g_bg.Clear();
+	g_fade.Black();
 
-	// BGリソースだけ先行して必要なのでロードする
-	int load_small = CreateLoadingSmallIcon();	// 右下ローディングアイコン
-	LoadResource("app:/Menu/Menu_BG01.sgo", SYSTEM_GROUP_SCENE, 0);
-	WaitCompleteResource();
-	CloseUi(load_small);	// 右下ローディングアイコン終了
+	g_resource.Entry("app:/ui/UiResourceGroup_Result.sgo", SYSTEM_GROUP_SCENE, 0);
+	g_resource.Wait();
 
-	g_bg.Play("app:/Menu/Menu_BG01.sgo");
+	g_bg.Play("app:/ui/lyt_bg.sgo");
+	g_main_frame.Play("app:/ui/lyt_ResultFrame.sgo");
+	g_main_frame.GetObject().SetDrawOrder(g_fade.GetObject());
 
-	// この関数以降基本的に強制的にタイトルに戻される全体リセットが発生します。管理されていないメモリとかないようにしてください。
-	g_music.Play( "BGM_E4S04_OnlineLobby" );	// BGM:メニュー画面
+	ResolveResult();	// ドロップアイテムを確定
+	UiObject@ ui_handle = CreateUiFile("app:/ui/lyt_HUiResult.sgo");
+	g_music.Play( GetMainMenuBgm() );
 
+	g_fade.In();
+
+	bool is_all_clear = ApplyResult(is_mission_clear );	// ミッション結果を反映
+	UpdateAchievementCounter( true, is_mission_clear );
+
+	// 武器制限アンロックチェック
+	CheckUnlockArmorWeaponLimit();
+
+/////// _STEAM_VER_ ///////
+	// セーブデータのバックアップ
+	BackupSaveData();
+///////////////////////////
+
+	Save(false, "Contents_AutoSaveRetry",true);	// セーブ開始
+
+	// 次の画面用のプリロード開始
+	g_resource.SetSilent(true);
+	g_resource.EntryModeImage(0);
+	g_resource.SetSilent(false);
+	
+/////// _STEAM_VER_ ///////
+	//（オンラインモードのみ）リザルトからルームに戻るときもルームUIのプリロードを行う
+	if( Network_IsRoomConnected() ) {
+		g_resource.Entry("app:/ui/UiResourceGroup_OnlineRoom.sgo", SYSTEM_GROUP_SCENE, 0);
+	}
+///////////////////////////
+
+	g_fade.Wait();
+
+	// 初めてラストミッションをクリアしたら、全難易度が解放されたことを通知する。
+	if (is_all_clear == true)
+	{
+		Dialog_Message( "NotifyAllMissionClear" );
+	}
+	ui_handle.WaitCloseRequest();
+
+	// ClearResult();		// ドロップアイテムをクリア
+	ResetResult();
+
+	g_fade.Out();
+	g_fade.Wait();
+
+	DeleteAllMenuUi();
+	g_fade.Black();
+}
+
+enum OnlineInitializeResult {
+	TO_LOBBY,
+	TO_ROOM,
+	TO_CREATEROOM,
+	TO_TITLE,
+};
+
+/// メモ：UI処理内から直に呼び出すように仕様修正するので、All系の命令は使えない
+OnlineInitializeResult _OnlineMode()
+{
+	int invitation_type = GetInvitationType();
 	int result_code;
 
-	// とりあえずプリロード可能な情報がある場合はここでやっておく
-	LoadResource("app:/Menu/MenuResourceGroup_Lobby.sgo", SYSTEM_GROUP_SCENE, 0);
-	if( is_invitation ) {
-		// この段階で(失敗しなければ)ルームに行くのが確定している
-		LoadResource("app:/Menu/MenuResourceGroup_Room.sgo", SYSTEM_GROUP_SCENE, 0);
-		// Modeも決定済み
-		LoadMissionImageResource(0);
-	}
+	Network_SignIn();
 
-	Network_SetLocation(GAME_LOADING);
 	int extra_error_code = 0;
 	result_code = Network_PreCheck(extra_error_code);
 	if( 0 == extra_error_code && NETWORKBEGINRESULT_NO_PLUS == result_code ) {
-		CreateUi("ui_plus_commerce");
-		WaitAllUiClose();
+		UiObject @object = CreateUiFileOpt("app:/ui/lyt_HUiPsPlus.sgo","");
+		object.WaitClose();
 
 		if( 0 == GetUiExitCode() ) {
-			// システム側で表示されているので、不要
-			//Dialog_Message( "","" );
-
-			g_music.Stop( g_music_fadetime );
-			Network_End();
-
-			g_bg.Stop();
-
 			// エラーの場合はオンラインモードから抜ける
-			return "Title";
+			return TO_TITLE;
 		} else {
 			// PLUS:成功
 			result_code = NETWORKBEGINRESULT_SUCCESS;
@@ -952,7 +1016,7 @@ string _OnlineMode(bool is_invitation)
 
 		switch( result_code ) {
 		case NETWORKBEGINRESULT_NO_SIGNIN:
-			Dialog_Message( "","GameMode_NoSignin" );
+			Dialog_Message( "GameMode_NoSignin" );
 			break;
 		case NETWORKBEGINRESULT_FAILED:
 			{
@@ -961,27 +1025,27 @@ string _OnlineMode(bool is_invitation)
 			}
 			break;
 		case NETWORKBEGINRESULT_PARENTAL:
-			Dialog_Message( "","GameMode_OnlineCantUse" );
+			Dialog_Message( "GameMode_OnlineCantUse" );
 			break;
 		case NETWORKBEGINRESULT_IRRELEVANT_NAME:
-			Dialog_Message( "","Online_NameVerifyError" );
+			Dialog_Message( "Online_NameVerifyError" );
 			// 名前がダメなので、必ずタイトルに戻る
 			break;
 		}
-		g_music.Stop( g_music_fadetime );
-		Network_End();
-
-		g_bg.Stop();
 
 		// エラーの場合はオンラインモードから抜ける
-		return "Title";
+		return TO_TITLE;
 	}
 
 	// 一定時間は待ってからダイアログを消す
-	Wait( 60 );
+	//Wait( 60 );
 
+	g_resource.Wait();
 	// 待機ウインドウを消す
 	CloseUi(wait_ui_handle);
+
+	// ミッション画像だけ先に読ませておく
+	g_resource.EntryModeImage(0);
 
 	// 年齢チェックを行い、必要であればチャット禁止などの警告を出す必要がある。
 	if( false == Network_IsCommunications() ) {
@@ -998,423 +1062,410 @@ string _OnlineMode(bool is_invitation)
 		}
 	}
 
-	if( is_invitation ) {
-		/// ルーム参加開始
-		CreateUi("ui_invite_join");
-		WaitAllUiClose();
+	if( INVITATION_TYPE_NONE != invitation_type ) {
+		// 招待処理
+		int wait_ui_handle = CreateWaitUi("RoomCreate_Join");
 
-		int ret = GetUiExitCode();
+		int ret = NETWORKJOINRESULT_FAILED;
 
-		// 招待情報をクリア
-		ClearInvitation();
+		// 接続開始
+		bool is_continue = true;
+		while( is_continue ) {
+			if( INVITATION_TYPE_INVITE == invitation_type ) {
+				InvitationJoin join;
+				ret = join.wait();
+			} else if( INVITATION_TYPE_PLAYTOGETHER_HOST == invitation_type ) {
+				ret = NETWORKJOINRESULT_SUCCESS;
+			}
+
+			// パスコード再入力
+			is_continue = false;
+			switch( ret ) {
+			case NETWORKJOINRESULT_PASSCODE:
+				if( DIALOG_YES == Dialog_YesNo( "OnlineError_RoomPassFailed" ) ) {
+					is_continue = true;
+				}
+				break;
+			}
+		}
+		bool is_room_entry = false;
 
 		// 参加チェック
 		switch( ret ) {
 		case NETWORKJOINRESULT_SUCCESS:
+			is_room_entry = true;
 			break;
 		case NETWORKJOINRESULT_CHAT_RESTRICTION:
-			Dialog_Message( "","Lobby_Chat_NotInvite" );
-			return "Title";
+			Dialog_Message( "Lobby_Chat_NotInvite" );
+			break;
 		case NETWORKJOINRESULT_UGC_RESTRICTION:
-			Dialog_Message( "","Lobby_UGC_NotInvite" );
-			return "Title";
+			Dialog_Message( "Lobby_UGC_NotInvite" );
+			break;
+		case NETWORKJOINRESULT_PASSCODE:
 		case NETWORKJOINRESULT_FAILED:
-			Dialog_Message( "","OnlineError_RoomError" );
-			return "Title";
+			Dialog_Message( "OnlineError_RoomError" );
+			break;
 		case NETWORKJOINRESULT_FILLED:
-			Dialog_Message( "","OnlineError_RoomFull" );
-			return "Title";
+			Dialog_Message( "OnlineError_RoomFull" );
+			break;
+		}
+
+		OnlineInitializeResult return_function = TO_TITLE;
+
+		if( is_room_entry ) {
+			g_resource.Entry("app:/ui/UiResourceGroup_OnlineRoom.sgo", SYSTEM_GROUP_SCENE, 0);
+			g_resource.EntryModeImage(0);
+
+			if( INVITATION_TYPE_PLAYTOGETHER_HOST == invitation_type ) {
+				return_function = TO_CREATEROOM;
+			} else {
+				return_function = TO_ROOM;
+			}
+		}
+
+		CloseUi(wait_ui_handle);
+		WaitUiClose(wait_ui_handle);
+
+		if( INVITATION_TYPE_PLAYTOGETHER_HOST != invitation_type ) {
+			// 招待情報をクリア
+			ClearInvitation();
 		}
 
 		/// 
-		return "PreRoom";
+		return return_function;
 	}
+	WaitUiClose(wait_ui_handle);
 
-	return "PreLobby";
-}
-
-
-/// 招待モード
-string InviteOnlineMode()
-{
-	return _OnlineMode(true);
-}
-
-/// 通常
-string OnlineMode()
-{
-	return _OnlineMode(false);
+	return TO_LOBBY;
 }
 
 //===============================================================================
-// ルーム画面(初期化用)
-string PreLobby()
+// サーバ選択画面
+// オンラインモード
+string OnlineMode()
 {
-	Chat_Destroy();
-	return "Lobby";
+	g_fade.Black();
+	DeleteAllMenuUi();
+
+	g_fade.In();
+
+	// この関数以降基本的に強制的にタイトルに戻される全体リセットが発生します。管理されていないメモリとかないようにしてください。
+	g_music.Play( "BGM_E5S04_OnlineLobby" );	// BGM:メニュー画面
+	g_resource.Entry("app:/ui/UiResourceGroup_Online.sgo", SYSTEM_GROUP_SCENE, 0);
+
+	OnlineInitializeResult next = _OnlineMode();
+
+	g_fade.Black();
+
+	switch( next ) {
+	case TO_LOBBY:
+		return "Lobby";
+	case TO_ROOM:
+		return "Room";
+	case TO_CREATEROOM:
+		return "CreateRoom";
+	default:
+		break;
+	}
+
+	g_music.Stop( 0 );
+	return "StartToTitle";
+}
+
+
+
+//===============================================================================
+// ロビーから開始
+string StartLobby()
+{
+	g_music.Stop(g_music_fadetime);
+	g_music.WaitStop();
+	
+	//初期化
+	InitializeAll();
+	Network_SetLocation(BOOT_COMPLETE);
+
+	//タイトル
+	titleSaveDataLoad();
+
+	WaitSearchUpdateAddon();	//追加コンテンツの更新終了を待つ
+	WaitSaveLoad();
+
+	SetMode(GetModeNo(GAME_ONLINE_SCENARIO,0));
+
+	// モード、ゲームデータ読み込み
+	if( LoadSaveData_ModeSelect() == false ){
+		Dialog_Message( "Sys_LoadFailed_ToTitle" );
+
+		return "StartToTitle";
+	}
+	UnlockDownloadContents();
+
+	g_resource.Entry("app:/UI/UiResourceGroup_BootScript.sgo", SYSTEM_GROUP_TITLE, 0);
+	g_resource.Entry("app:/ui/UiResourceGroup_Online.sgo", SYSTEM_GROUP_SCENE, 0);
+	g_resource.Entry("app:/ui/UiResourceGroup_OnlineRoom.sgo", SYSTEM_GROUP_SCENE, 0);
+
+	OnlineInitializeResult next = _OnlineMode();
+	switch( next ) {
+	case TO_LOBBY:
+		return "Lobby";
+	case TO_ROOM:
+		return "Room";
+	case TO_CREATEROOM:
+		return "CreateRoom";
+	default:
+		break;
+	}
+
+	return "StartToTitle";
+}
+
+bool ApplyModeNo(int mode_index)
+{
+	if (mode_index == GetCurrentModeNo()) {
+		RestoreMissionSelect();
+		// 既にロード済みなのでなにもしないようにする
+	} else {
+		g_resource.FreeGroup(RESOURCE_GROUP_MODE);
+
+		Storage	gamemode("store_gamemode");
+		if (SetMode(mode_index)) {
+
+			g_resource.SetSilent(true);
+			g_resource.EntryModeImage(0);
+			g_resource.SetSilent(false);
+
+			// モード、ゲーム、実績データ読み込み
+			if (LoadSaveData_ModeSelect()) {
+				UpdateAchievementCounter(false, false);
+				UnlockDownloadContents();
+
+				gamemode.Restore();
+			} else {
+				gamemode.Release();
+				// セーブデータのロードに失敗したのでタイトルに戻ります
+				Dialog_Message("Sys_LoadFailed_ToTitle");
+				return false;
+			}
+		} else {
+			gamemode.Release();
+			// コンテンツを所有していないのでタイトルに戻ります
+			Dialog_Message("Lobby_NotHaveContents");
+
+			return false;
+		}
+	}
+	return true;
+}
+
+void _lobby_SetModeHandler(UiObject @window, string message_id, string wparam)
+{
+	if ("SetModeRequest" == message_id) {
+		// HUiLobbyからのコールバック、DLCモードとセーブデータのロードを行うために呼び出される
+
+		// モード番号そのものがくるので、そのまま使用する
+		int mode_no = parseInt(wparam);
+
+		if (false == ApplyModeNo(mode_no)) {
+			window.PostMessage("ModeRequestDone", "[result|false]");
+		} else {
+			window.PostMessage("ModeRequestDone", "[result|true]");
+		}
+	}
 }
 
 //===============================================================================
 // ロビー画面
 string Lobby()
 {
-	int load_small = CreateLoadingSmallIcon();	// 右下ローディングアイコン
-	LoadResource("app:/Menu/MenuResourceGroup_Lobby.sgo", SYSTEM_GROUP_SCENE, 0);
-	WaitCompleteResource();
-	CloseUi(load_small);	// 右下ローディングアイコン終了
+	g_chat.Release();
 
-	g_bg.Play("app:/Menu/Menu_BG01.sgo");
+	// ロビーに戻った段階で不用になっているネットワーク通知処理を掃除する（累積分の切断通知等）
+	Network_ClearMessage();
+
+	g_resource.Entry("app:/ui/UiResourceGroup_Online.sgo", SYSTEM_GROUP_SCENE, 0);
+	g_resource.Wait();
+
+	g_bg.Play("app:/ui/lyt_bg.sgo");
+	g_music.Play( "BGM_E5S04_OnlineLobby" );	// BGM:メニュー画面
+
+	g_main_frame.Play("app:/ui/lyt_MainFrame.sgo");
+	g_main_frame.GetObject().SetDrawOrder(g_fade.GetObject());
 
 	// ロビー画面のＵＩ表示
-	// memo ロビー画面は常にルームリストの更新中フラグを監視して、更新中であればダイアログを表示する機能が必要。
-	// memo ルームに入る場合も同じような画面が必要。
-	// memo 招待、パーティの確認機能が必要
-	//CreateUi( "" );
 
 	Network_SetLocation(MENU_LOBBY);
 	
 	string result = "";
 	
-	int ui_handle = CreateUi("ui_online_lobby");
-	g_music.Play( "BGM_E4S04_OnlineLobby" );	// BGM:メニュー画面
+	UiObject@ window = CreateUiFile("app:/ui/lyt_HUiOnlineLobby.sgo");
+	window.SetDrawOrder(@g_prev_object);
+	g_fade.In();
 
-	int message_id;
-	int wparam;
-	while( GetUIMessage(ui_handle,message_id,wparam) ) {
-		switch( message_id ) {
-		case LOBBY_LOADMODEDATA_REQUEST:
-			{
-				WaitCompleteResource();
-				FreeResourceGroup( RESOURCE_GROUP_MODE );
-				// DLCコンテンツIDが一緒に返ってくるので初期化する
-				int mode_no = wparam;
-				SetMode(mode_no);
+	// 次の画面は同じリソースなのでプリロードを開始しておく
+	g_resource.Entry("app:/ui/UiResourceGroup_OnlineRoom.sgo", SYSTEM_GROUP_SCENE, 0);
 
-				LoadMissionImageResource(0);
-
-				// モード、ゲーム、実績データ読み込み
-				if( LoadSaveData_ModeSelect() ){
-					int load_small = CreateLoadingSmallIcon();	// 右下ローディングアイコン
-					UnlockDownloadContents();	// ダウンロードコンテンツをアンロック
-					UpdateAchievementCounter( false );
-
-					WaitCompleteResource();
-					CloseUi(load_small);	// 右下ローディングアイコン終了
-
-					PostUIMessage(LOBBY_LOADMODEDATA_DONE,1);
-				} else {
-					PostUIMessage(LOBBY_LOADMODEDATA_DONE,0);
-				}
-			}
-			break;
-		}
+	string message_id;
+	string wparam;
+	while( window.GetMessage(message_id,wparam) ) {
+		_lobby_SetModeHandler(window, message_id, wparam);
 	}
 
-	WaitAllUiClose();
-
+	window.WaitCloseRequest();
 	int exit_code = GetUiExitCode();
 
 	switch( (exit_code&0xf) ){
 	case NETWORKLOBBYMENU_CREATEROOM:
-		result = "SelectDLCContents";	
+		result = "CreateRoom";
 		break;
-	
-	case NETWORKLOBBYMENU_RETURN_TITLE:
-		// 接続終了コード
-		Network_End();
-		g_bg.Stop();
-		g_music.Stop(g_music_fadetime);
-		result = "Title";
-		break;
-	case NETWORKLOBBYMENU_RETURNWORLDSELECT:
-		// 接続終了コード
-		Network_End();
-		g_bg.Stop();
-		g_music.Stop(g_music_fadetime);
-		result = "Title";
-		break;
-		
+
 	case NETWORKLOBBYMENU_JOINROOM:
-		{
-			FreeResourceGroup( RESOURCE_GROUP_MODE );
-			// DLCコンテンツIDが一緒に返ってくるので初期化する
-			int mode_no = (exit_code >> 8);
-			SetMode(mode_no);
-
-			LoadMissionImageResource(0);
-
-			// モード、ゲーム、実績データ読み込み
-			if( LoadSaveData_ModeSelect() == false ){
-				Dialog_Message( "","Sys_LoadFailed_ToTitle" );
-
-				// エラーがあったのでタイトルに戻す
-				Network_End();
-				g_bg.Stop();
-				g_music.Stop(g_music_fadetime);
-				return "Title";
-			}
-			UnlockDownloadContents();	// ダウンロードコンテンツをアンロック
-			UpdateAchievementCounter( false );
-		}
 		g_music.Stop( g_music_fadetime );
-		result = "PreRoom";
+		result = "Room";
+		break;
+
+	case NETWORKLOBBYMENU_RETURN_TITLE:
+		g_music.Stop( g_music_fadetime );
+		g_fade.Out();
+		g_resource.Wait();
+		g_music.WaitStop();
+		result = "StartToTitle";
+		break;
+
+	default:
+		result = "exit";
 		break;
 	}
-
-	
-//	result = "CreateRoom";
-	// とりあえず接続済みであればルーム画面へ移動させる
-//	if( Network_IsRoomJoined() ) {
-//		result = "Room";
-//	}
-
-//	WaitAllUiClose();
 
 	// プレイヤーの選択で少なくとも以下に分岐する
 	return result;
-	//return "CreateRoom";
-	//return "Room";
-	//return "Title";
 }
-//===============================================================================
-// ルーム作成画面
+
 string CreateRoom()
 {
-	// とりあえずプリロードだけ開始しておく
-	int load_small = CreateLoadingSmallIcon();	// 右下ローディングアイコン
-	LoadMissionImageResource(0);
-	WaitCompleteResource();
-	CloseUi(load_small);	// 右下ローディングアイコン終了
+	int invitation_type = GetInvitationType();
 
-	// ルーム画面のプリロード開始
-	LoadResource("app:/Menu/MenuResourceGroup_Room.sgo", SYSTEM_GROUP_SCENE, 0);
+	g_resource.Wait();
 
-	// ルーム作成画面ＵＩ表示
-	// memo ルームに入る前には同期待ちダイアログ必要
-	// memo このＵＩはルーム検索画面として配置を微妙にいじって再利用される可能性が高いです。そのつもりでつくっておいた方がよいです。
-	//CreateUi( "" );
+	g_bg.Play("app:/ui/lyt_bg.sgo");
 
-	CreateUi( "ui online_createroom" );
-	WaitAllUiClose();
+	g_main_frame.Play("app:/ui/lyt_MainFrame.sgo");
+	g_main_frame.GetObject().SetDrawOrder(g_fade.GetObject());
+
+	g_music.Play( "BGM_E5S04_OnlineLobby" );
+
+	UiObject@ main_object = CreateUiFile("app:/ui/lyt_HUiOnline_RoomCreate.sgo");
+	@g_prev_object = main_object;
+	g_fade.In();
+
+	string message_id;
+	string wparam;
+	while (main_object.GetMessage(message_id, wparam))
+	{
+		_lobby_SetModeHandler(main_object, message_id, wparam);
+	}
+
+	main_object.WaitCloseRequest();
 
 	int exit_code = GetUiExitCode();
 
-	string result = "";
+	string result = "Lobby";
 	switch( exit_code ){
-	case NETWORKCREATEROOM_SUCCESS:
-		// とりあえずルームを作成する、本来はUI側での処理が必要。
+	case Hui_ROOMCREATE_MENU_CREATEROOM:
+		Network_SetLocation(MENU_ROOM);
+		if( INVITATION_TYPE_PLAYTOGETHER_HOST == invitation_type ) {
+			// ここで再度PlayTogetherのシグナルを行うことで招待状を自動送信する
+			PlayTogether_Signal();
+			// 招待情報をクリア
+			ClearInvitation();
+		}
 		g_music.Stop( g_music_fadetime );
-		result = "PreRoom";	
+		result = "Room";
 		break;
 		
-	case NETWORKCREATEROOM_CANCEL:
-		result = "Lobby";	
+	case Hui_ROOMCREATE_MENU_RETURN_LOBBY:
+		result = "Lobby";
 		break;
-		
-	case NETWORKCREATEROOM_RETURN_TITLE:
-		result = "Title";	
+	case Hui_ROOMCREATE_MENU_RETURN_TITLE:
+		g_music.Stop( g_music_fadetime );
+		g_fade.Out();
+		g_resource.Wait();
+		g_music.WaitStop();
+		result = "StartToTitle";
 		break;
 	}
 
 	return result;
 }
 
-//===============================================================================
-// ルーム作成画面(前)
-string SelectDLCContents()
-{
-	// デフォルトのモード番号を取得しておく
-	int mode_no = GetModeNo(GAME_ONLINE_SCENARIO,0);
-
-	if( 1 < GetModeTypeContentsCount(GAME_ONLINE_SCENARIO) ) {
-		// コンテンツが複数ある場合はモード選択を行う
-		int load_small = CreateLoadingSmallIcon();	// 右下ローディングアイコン
-		LoadResource("app:/Menu/MenuResourceGroup_SlotModeSelect.sgo", SYSTEM_GROUP_SCENE, 0 );
-		WaitCompleteResource();
-		CloseUi(load_small);	// 右下ローディングアイコン終了
-
-		// 複数のコンテンツを持っている場合はモード選択画面を出す
-		int ui_handle = CreateUi("ui_onlinemodeselect");
-		WaitAllUiClose();
-	
-		// モードステータスロード(キャンセルでなかったら実行)
-		if( GetUiExitCode() == UIMODESELECT_RESULT_CANCEL ){
-			return "PreLobby";
-		}
-
-		mode_no = GetUiExitCode();
-	}
-
-	if( mode_no >= 0 ) {
-		FreeResourceGroup( RESOURCE_GROUP_MODE );
-		// DLCパッケージが選択されたので、適応する
-		SetMode(mode_no);
-
-		LoadMissionImageResource(0);
-
-		// モード、ゲーム、実績データ読み込み
-		if( LoadSaveData_ModeSelect() == false ){
-			Dialog_Message( "","Sys_LoadFailed_ToTitle" );
-			// エラーがあったのでタイトルに戻す
-			Network_End();
-			g_bg.Stop();
-			g_music.Stop(g_music_fadetime);
-			return "Title";
-		}
-		UnlockDownloadContents();	// ダウンロードコンテンツをアンロック
-		UpdateAchievementCounter( false );
-	} else {
-		// 0未満はキャンセル動作扱い
-		return "PreLobby";
-	}
-
-	return "CreateRoom";
-}
-
-//===============================================================================
-// ルーム画面(初期化用)
-string PreRoom()
-{
-	Chat_Create();
-	return "Room";
-}
-
-//===============================================================================
-// ルーム画面
 string Room()
 {
-	int load_small = CreateLoadingSmallIcon();	// 右下ローディングアイコン
-	LoadResource("app:/Menu/MenuResourceGroup_Room.sgo", SYSTEM_GROUP_SCENE, 0);
-	LoadMissionImageResource(0);
-	LoadResource("app:/Menu/MissionClear.sgo", SYSTEM_GROUP_MODE, 0 );
-	LoadResource("app:/Menu/MissionFailed.sgo", SYSTEM_GROUP_MODE, 0 );
-	WaitCompleteResource();
-	CloseUi(load_small);	// 右下ローディングアイコン終了
+	g_resource.Wait();
 
-	g_bg.Play("app:/Menu/Menu_BG01.sgo");
+	g_fade.Wait();
 
+	g_chat.Build();
 	Network_SetLocation(MENU_ROOM);
 
-	// ルーム画面ＵＩ表示
-	// memo 自フレンドの招待/パーティ招待機能が必要、昔チャットに付いていた機能でTRC的によいはず。
-	int handle = Create3DModelUi( "ui_online_room" );
-	g_music.Play( GetMainMenuBgm() );	// BGM:メニュー画面
-	WaitUiClose( handle );
+	g_bg.Play("app:/ui/lyt_bg.sgo");
+	g_music.Play( GetMainMenuBgm() );
+
+	g_main_frame.Play("app:/ui/lyt_MainFrame.sgo");
+	g_main_frame.GetObject().SetDrawOrder(g_fade.GetObject());
+
+	UiObject@ ui_handle3D = CreateUiFile("app:/ui/lyt_HUiHQ3DModel.sgo");
+
+	UiObject@ main_object = CreateUiFile("app:/ui/lyt_HUiOnlineRoom.sgo");
+	@g_prev_object = main_object;
+
+	g_fade.In();
+
+	string message_id;
+	string wparam;
+	while (main_object.GetMessage(message_id, wparam)) {
+		_lobby_SetModeHandler(main_object, message_id, wparam);
+	}
+
+	main_object.WaitCloseRequest();
+	int exit_code = GetUiExitCode();
+
 	g_music.Stop( g_music_fadetime );
 
-	int exit_code = GetUiExitCode();
 	print("ui_online_room exit code["+exit_code+"]");
 	switch( exit_code ){
 	case UIONLINE_GOTO_MISSION:
+		g_fade.Out();
+		g_fade.Wait();
 		g_bg.Stop();
-		//CloseUi( g_bg_handle );
+
+		ui_handle3D.Close();
+
 		return "PlayMission_Online";
 	case UIONLINE_GOTO_LOBBY:
-		Chat_Destroy();
-		Test_Network_LeaveRoom();
-		// セーブ
-		if( SaveAllData(true) == false ){
-			// セーブ失敗
-		}
-		return "PreLobby";
+		SaveAllData_ReturnTitle(false);
+		break;
+	case UIONLINE_GOTO_RETURNTITLE:
+		ui_handle3D.Close();
+		g_chat.Release();
+		Network_LeaveRoom();
+		
+		g_music.Stop( g_music_fadetime );
+		g_fade.Out();
+		g_resource.Wait();
+		g_music.WaitStop();
+		return "StartToTitle";
 	default:
 		print("ハンドルされていないリザルトコードが返ってきています ["+exit_code+"]");
 		break;
 	}
 
-	Chat_Destroy();
-	Test_Network_LeaveRoom();
-	// セーブ
-	if( SaveAllData(true) == false ){
-		// セーブ失敗
-	}
-	return "PreLobby";
-}
+	ui_handle3D.Close();
 
-
-
-//===============================================================================
-// 対戦メニュー画面
-string VersusMode()
-{
-	DeleteAllMenuUi();	// 念のためUIを掃除
-	g_bg.Clear();
-
-	int load_small = CreateLoadingSmallIcon();	// 右下ローディングアイコン
-	LoadResource("app:/Menu/Menu_BG01.sgo", SYSTEM_GROUP_SCENE, 0);
-	LoadResource("app:/ETC/VersusMap.sgo", SYSTEM_GROUP_MODE, 0);
-	LoadResource("app:/Menu/VS_1PWin.sgo", SYSTEM_GROUP_MODE, 0);
-	LoadResource("app:/Menu/VS_2PWin.sgo", SYSTEM_GROUP_MODE, 0);
-	LoadResource("app:/Menu/VS_Draw.sgo", SYSTEM_GROUP_MODE, 0);
-	LoadResource("app:/Menu/MenuResourceGroup_Versus.sgo", SYSTEM_GROUP_SCENE, 0);
-	WaitCompleteResource();
-	CloseUi(load_small);	// 右下ローディングアイコン終了
-
-
-
-	g_bg.Play("app:/Menu/Menu_BG01.sgo");
-	int ui_handle = Create3DModelUi("ui_versus");
-
-	CreateFadeUi("ui_fade_screen_test");
-	FadeUiControl( FADE_CONTROL_OUT_TO_IN, 0.5 );
-
-	g_music.Play( GetMainMenuBgm() );	// BGM:メニュー画面
-	WaitAllUiClose();
-	g_music.Stop( g_music_fadetime );
-
-	FadeUiControl( FADE_CONTROL_IN_TO_OUT, 0.8 );
-	WaitFadeUiComplete();
-	DeleteFadeUi();
-
-	g_bg.Stop();
-	
-	FreeResourceGroup( RESOURCE_GROUP_SCENE );
-	int save_handle;
-	int exit_code = GetUiExitCode();
-	switch( exit_code ){
-	case UIVERSUS_GOTO_BATTLE:
-		return "PlayVersus";			// 対戦開始
-	case UIVERSUS_GOTO_TITLE:
-		// セーブ
-		if(SaveAllData_ReturnTitle(true) == false){
-			// 失敗
-		}
-		return "Title";			// タイトルに戻る
-	}
-	
-	
-	// セーブ
-	if(SaveAllData_ReturnTitle(true) == false){
-		// 失敗
-	}
-	return "Title";
-}
-
-//===============================================================================
-// 対戦
-string PlayVersus()
-{
-	DeleteAllMenuUi();	// 念のためUIを掃除
-	g_bg.Clear();
-
-	FreeResourceGroup( RESOURCE_GROUP_SCENE );
-
-	int result;
-	for(;;){
-		result = Versus();
-		if( result != MISSION_RESULT_RETRY) break;
-	}
+	// ロビーに戻す
+	g_chat.Release();
+	Network_LeaveRoom();
 
 	// セーブ
-	if(SaveAllData(true) == false){
-		// 失敗
-	}
-
-	FreeResourceGroup( RESOURCE_GROUP_SCENE );
-	return "VersusMode";
+	return "Lobby";
 }
-
-
-
-
 
